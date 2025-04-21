@@ -1,0 +1,259 @@
+
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <title>ตารางคิวรถรายสัปดาห์</title>
+  <style>
+    @page {
+      size: A4 landscape;
+      margin: 10mm;
+    }
+
+    body {
+      font-family: 'Sarabun', sans-serif;
+      width: 350mm;
+      height: 210mm;
+      margin: auto;
+      padding: 10mm;
+      background: #fffefc;
+      box-sizing: border-box;
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 5px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 16px;
+      table-layout: fixed;
+    }
+
+    th, td {
+      border: 1px solid #666;
+      padding: 4px;
+      position: relative;
+    }
+
+    input, textarea {
+      width: 100%;
+      box-sizing: border-box;
+      font-size: 16px;
+      text-align: center;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 40px;
+    }
+
+    .image-preview {
+      max-height: 60px;
+      display: block;
+      margin-top: 4px;
+    }
+
+    .controls {
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    select, button {
+      padding: 6px 10px;
+      font-size: 16px;
+    }
+
+    @media print {
+      .controls, .add-row-btn {
+        display: none;
+      }
+    }
+
+    .resizer {
+      position: absolute;
+      right: 0;
+      top: 0;
+      width: 5px;
+      height: 100%;
+      cursor: col-resize;
+      user-select: none;
+    }
+
+    .day-header {
+      background-color: #f0f0f0;
+      font-weight: bold;
+      text-align: left;
+    }
+
+    .add-row-btn {
+      background-color: #d0eaff;
+      border: none;
+      padding: 2px 8px;
+      font-size: 10px;
+      cursor: pointer;
+      margin: 2px 0;
+    }
+  </style>
+</head>
+<body>
+  <h2>ตารางคิวรถรายสัปดาห์</h2>
+
+  <div class="controls">
+    <label>เลือกสัปดาห์:
+      <select id="weekSelect" onchange="loadWeekly()">
+        <option value="1">สัปดาห์ที่ 1</option>
+        <option value="2">สัปดาห์ที่ 2</option>
+        <option value="3">สัปดาห์ที่ 3</option>
+        <option value="4">สัปดาห์ที่ 4</option>
+      </select>
+    </label>
+    <button onclick="saveWeekly()">บันทึก</button>
+    <button onclick="loadWeekly()">เรียกดู</button>
+    <button onclick="window.print()">พิมพ์ / Export</button>
+  </div>
+
+  <form id="weeklyForm">
+    <table id="resizableTable">
+      <thead>
+        <tr>
+          <th>วัน<div class="resizer"></div></th>
+          <th>ชื่อคน/วันจอง<div class="resizer"></div></th>
+          <th>ชื่อลูกค้า<div class="resizer"></div></th>
+          <th colspan="2">สถานที่<div class="resizer"></div></th>
+          <th>เวลาเริ่ม-สิ้นสุด<div class="resizer"></div></th>
+          <th>ชื่อคนขับ<div class="resizer"></div></th>
+          <th>หลักฐานการจอง<div class="resizer"></div></th>
+        </tr>
+      </thead>
+      <tbody id="scheduleBody"></tbody>
+    </table>
+  </form>
+
+  <script>
+    const days = ['จันทร์','อังคาร','พุธ','พฤหัส','ศุกร์','เสาร์','อาทิตย์'];
+
+    function createRow(day, index, subIndex = 0, data = {}) {
+      const rowId = `row_${day}_${subIndex}`;
+      return `
+        <tr data-day="${day}" id="${rowId}">
+          <td>${subIndex === 0 ? `<div>${day}</div><input type='date' name='date_${day}' value='${data.date || ''}'>` : ''}</td>
+          <td><input name="booker_${day}_${subIndex}" value="${data.booker || ''}"></td>
+          <td><input name="customer_${day}_${subIndex}" value="${data.customer || ''}"></td>
+          <td colspan="2"><textarea name="location_${day}_${subIndex}">${data.location || ''}</textarea></td>
+          <td>
+            <input type="time" name="start_${day}_${subIndex}" value="${data.start || ''}">
+            <input type="time" name="end_${day}_${subIndex}" value="${data.end || ''}">
+          </td>
+          <td><input name="driver_${day}_${subIndex}" value="${data.driver || ''}"></td>
+          <td>
+            <input type="file" accept="image/*" onchange="previewImage(event, '${day}_${subIndex}')">
+            <img id="preview_${day}_${subIndex}" class="image-preview" src="${data.image || ''}">
+          </td>
+        </tr>
+      `;
+    }
+
+    function renderTable(data = {}) {
+      const body = document.getElementById("scheduleBody");
+      body.innerHTML = '';
+      days.forEach((day, index) => {
+        const rows = data[day] || [{}];
+        rows.forEach((rowData, i) => {
+          body.innerHTML += createRow(day, index, i, rowData);
+        });
+        body.innerHTML += `
+          <tr><td colspan="8">
+            <button type="button" class="add-row-btn" onclick="addRow('${day}')">+ เพิ่มแถว ${day}</button>
+          </td></tr>
+        `;
+      });
+    }
+
+    function addRow(day) {
+      const tbody = document.getElementById("scheduleBody");
+      const existingRows = [...tbody.querySelectorAll(`tr[data-day='${day}']`)];
+      const nextIndex = existingRows.length;
+      const newRow = createRow(day, 0, nextIndex);
+      const addBtnRow = tbody.querySelector(`tr td button[onclick*="${day}"]`).parentElement.parentElement;
+      addBtnRow.insertAdjacentHTML("beforebegin", newRow);
+    }
+
+    function getWeekKey() {
+      return `driverSchedule_week_${document.getElementById("weekSelect").value}`;
+    }
+
+    function saveWeekly() {
+      const data = {};
+      const inputs = document.querySelectorAll("#weeklyForm input, #weeklyForm textarea");
+      inputs.forEach(input => {
+        const name = input.name;
+        const [field, day, index] = name.split("_");
+        data[day] = data[day] || [];
+        data[day][index] = data[day][index] || {};
+        if (field === "booker") data[day][index].booker = input.value;
+        else if (field === "customer") data[day][index].customer = input.value;
+        else if (field === "location") data[day][index].location = input.value;
+        else if (field === "start") data[day][index].start = input.value;
+        else if (field === "end") data[day][index].end = input.value;
+        else if (field === "driver") data[day][index].driver = input.value;
+        else if (field === "date") data[day][index].date = input.value;
+      });
+      for (const day in data) {
+        data[day].forEach((r, i) => {
+          const img = document.getElementById(`preview_${day}_${i}`);
+          if (img && img.src) data[day][i].image = img.src;
+        });
+      }
+      localStorage.setItem(getWeekKey(), JSON.stringify(data));
+      alert("บันทึกเรียบร้อยแล้ว");
+    }
+
+    function loadWeekly() {
+      const raw = localStorage.getItem(getWeekKey());
+      const data = raw ? JSON.parse(raw) : {};
+      renderTable(data);
+    }
+
+    function previewImage(event, key) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        document.getElementById(`preview_${key}`).src = reader.result;
+      };
+      reader.readAsDataURL(event.target.files[0]);
+    }
+
+    window.onload = function () {
+      loadWeekly();
+      enableColumnResize("resizableTable");
+    };
+
+    function enableColumnResize(tableId) {
+      const table = document.getElementById(tableId);
+      const cols = table.querySelectorAll("th");
+      cols.forEach((col) => {
+        const resizer = col.querySelector(".resizer");
+        if (!resizer) return;
+        resizer.addEventListener("mousedown", (e) => {
+          const startX = e.pageX;
+          const startWidth = col.offsetWidth;
+          const onMouseMove = (e) => {
+            const newWidth = startWidth + (e.pageX - startX);
+            col.style.width = newWidth + "px";
+          };
+          const onMouseUp = () => {
+            document.removeEventListener("mousemove", onMouseMove);
+            document.removeEventListener("mouseup", onMouseUp);
+          };
+          document.addEventListener("mousemove", onMouseMove);
+          document.addEventListener("mouseup", onMouseUp);
+        });
+      });
+    }
+  </script>
+</body>
+</html>
